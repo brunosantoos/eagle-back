@@ -1,9 +1,9 @@
 # Deploy Eagle Center — VPS + Apache + Docker
 
-Front e API em **domínios separados**:
+Front e back em **repos separados** e **domínios separados**:
 
-- Front: `https://eagleacademia.com.br`
-- API:   `https://api.eagleacademia.com.br`
+- Front: `https://eagleacademia.com.br` (repo: `eagle-front`)
+- API:   `https://api.eagleacademia.com.br` (repo: este — `eagle-back`)
 
 Portas no host (somente loopback, Apache faz o proxy reverso):
 
@@ -24,10 +24,15 @@ Portas no host (somente loopback, Apache faz o proxy reverso):
 ## Passos
 
 ```bash
-# 1. Clone o repositório
-git clone <repo> eagle && cd eagle
+# 1. Clone os dois repos como diretórios irmãos
+cd /opt   # ou outro diretório padrão
+git clone <url-eagle-back>  eagle-back
+git clone --recurse-submodules <url-eagle-front> eagle-front
+# se já clonou o front sem --recurse-submodules:
+#   cd eagle-front && git submodule update --init --recursive
 
-# 2. Configure env de produção
+# 2. Configure env de produção no back
+cd /opt/eagle-back
 cp .env.production.example .env.production
 nano .env.production    # ajuste senhas + segredo (domínios já vêm corretos)
 
@@ -49,6 +54,21 @@ sudo systemctl reload apache2
 sudo certbot --apache -d eagleacademia.com.br -d www.eagleacademia.com.br
 sudo certbot --apache -d api.eagleacademia.com.br
 ```
+
+## Layout esperado na VPS
+
+```
+/opt/
+├── eagle-back/                    ← este repo (compose + back)
+│   ├── docker-compose.prod.yml
+│   ├── .env.production
+│   └── ...
+└── eagle-front/                   ← repo do front
+    ├── shared/eagle-back/         ← submodule (snapshot do back pros tipos do tRPC)
+    └── ...
+```
+
+O `docker-compose.prod.yml` do back referencia `../eagle-front` como contexto de build do front. Se mudar o nome do dir do front, ajuste a chave `services.frontend.build.context`.
 
 ## Após primeiro boot
 
@@ -83,7 +103,17 @@ docker exec -it eagle-postgres-prod psql -U eagle -d eagle
 ## Atualizações de código
 
 ```bash
+# Backend
+cd /opt/eagle-back
 git pull
+
+# Frontend (não esqueça do submodule)
+cd /opt/eagle-front
+git pull
+git submodule update --remote shared/eagle-back
+
+# Rebuild stack
+cd /opt/eagle-back
 docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
 ```
 
@@ -97,6 +127,7 @@ Backend roda `prisma db push` no entrypoint — schema do Postgres é sincroniza
 |---------|-----|
 | `502 Bad Gateway` no front | Container `eagle-frontend` caído ou porta 6666 errada. `docker compose -f docker-compose.prod.yml ps` |
 | `502 Bad Gateway` na API | Container `eagle-backend` caído ou porta 3033 errada. `docker compose -f docker-compose.prod.yml logs backend` |
+| Erro `Cannot find module '../../shared/eagle-back/...'` no build do front | Submodule não inicializado. `git submodule update --init --recursive` no repo do front. |
 | Login não persiste session | `BETTER_AUTH_URL` deve ser `https://api.eagleacademia.com.br`. `CORS_ORIGIN` deve ser `https://eagleacademia.com.br`. Cookies precisam de HTTPS válido. |
 | CORS bloqueado no browser | Confira `CORS_ORIGIN` no `.env.production` (origem do front, exata, com https). |
 | Upload retorna URL com `localhost` | Front buildado sem `VITE_BACKEND_URL`. Rebuild com `--build` após ajustar env. |

@@ -1,6 +1,12 @@
 node_modules/
 dist/
+uploads/
 .env
+.env.local
+.env.production
+.env.*.local
 *.db
 *.db-journal
+*.log
+.DS_Store
 prisma/migrations/
