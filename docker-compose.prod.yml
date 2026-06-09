@@ -1,0 +1,73 @@
+name: eagle-prod
+
+# Orquestra o stack completo em produção.
+# Roda a partir do diretório do repo do back (eagle-back/).
+# O repo do front deve estar clonado como diretório irmão (../eagle-front)
+# com submodule inicializado: git submodule update --init --recursive.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: eagle-postgres-prod
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-eagle}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-eagle}
+      POSTGRES_DB: ${POSTGRES_DB:-eagle}
+    volumes:
+      - eagle_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-eagle} -d ${POSTGRES_DB:-eagle}"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks:
+      - eagle
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: eagle-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3033
+      DATABASE_URL: postgresql://${POSTGRES_USER:-eagle}:${POSTGRES_PASSWORD:-eagle}@postgres:5432/${POSTGRES_DB:-eagle}?schema=public
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?missing BETTER_AUTH_SECRET}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:?missing BETTER_AUTH_URL}
+      CORS_ORIGIN: ${CORS_ORIGIN:?missing CORS_ORIGIN}
+      SEED_ON_START: ${SEED_ON_START:-false}
+    volumes:
+      - eagle_uploads:/app/uploads
+    ports:
+      - "127.0.0.1:3033:3033"
+    networks:
+      - eagle
+
+  frontend:
+    build:
+      context: ../eagle-front
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:?missing VITE_API_URL}
+        VITE_BACKEND_URL: ${VITE_BACKEND_URL:?missing VITE_BACKEND_URL}
+    container_name: eagle-frontend
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6666:80"
+    networks:
+      - eagle
+
+volumes:
+  eagle_pgdata:
+  eagle_uploads:
+
+networks:
+  eagle:
+    driver: bridge
