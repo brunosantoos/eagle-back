@@ -34,8 +34,9 @@ app.use('/uploads', express.static(uploadsDir));
 // @ts-ignore — Express wildcard type and better-auth handler are compatible at runtime
 app.all('/api/auth/*', toNodeHandler(auth));
 
-// Body parser
-app.use(express.json());
+// Body parser — siteContent.update envia o JSON inteiro do site (rich text + URLs);
+// o default de 100kb derruba o save silenciosamente quando o conteúdo cresce.
+app.use(express.json({ limit: '10mb' }));
 
 // Upload endpoint
 app.post('/api/upload', (req, res) => {
