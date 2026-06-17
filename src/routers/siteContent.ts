@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { router, publicProcedure, contentProcedure } from '../trpc';
 import { prisma } from '../db';
+import { siteContentSchema, type SiteContent } from '../schemas/siteContent';
 
 export const siteContentRouter = router({
   get: publicProcedure.query(async () => {
@@ -13,14 +14,14 @@ export const siteContentRouter = router({
     }
 
     try {
-      return JSON.parse(record.data) as unknown;
+      return JSON.parse(record.data) as SiteContent;
     } catch {
       return null;
     }
   }),
 
   update: contentProcedure
-    .input(z.object({ data: z.unknown() }))
+    .input(z.object({ data: siteContentSchema }))
     .mutation(async ({ input }) => {
       const record = await prisma.siteContent.upsert({
         where: { key: 'main' },
