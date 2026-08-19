@@ -44,6 +44,19 @@ const secondHeroConfig = z.object({
   subtitleColor: z.string(),
 });
 
+const carouselConfig = z.object({
+  title: z.string(),
+  footnote: z.string(),
+  titleColor: z.string(),
+  footnoteColor: z.string(),
+  cardTitleColor: z.string(),
+  cardLabelColor: z.string(),
+  cardTitleFontSize: z.number(),
+  cardLabelFontSize: z.number(),
+  cardOverlayOpacity: z.number(),
+  sideFadeOpacity: z.number(),
+});
+
 const capitalOption = z.object({
   value: z.string(),
   label: z.string(),
@@ -57,6 +70,12 @@ const businessNumber = z.object({
 const socialLink = z.object({
   platform: z.string(),
   url: z.string(),
+});
+
+const mediaEffect = z.object({
+  maskEnabled: z.boolean(),
+  maskOpacity: z.number(),
+  blur: z.number(),
 });
 
 const siteMedia = z.object({
@@ -76,12 +95,17 @@ const siteMedia = z.object({
 
 export const siteContentSchema = z.object({
   media: siteMedia,
+  mediaEffects: z.record(z.string(), mediaEffect),
   nav: z.object({
     home: z.string(),
     about: z.string(),
     franchise: z.string(),
   }),
   privacyPolicy: z.object({
+    title: z.string(),
+    content: z.string(),
+  }),
+  termsOfUse: z.object({
     title: z.string(),
     content: z.string(),
   }),
@@ -103,6 +127,9 @@ export const siteContentSchema = z.object({
     franchiseLink1: z.string(),
     franchiseLink2: z.string(),
     franchiseLink3: z.string(),
+    socialTitle: z.string(),
+    socialDescription: z.string(),
+    mapsUrl: z.string(),
     socialLinks: z.array(socialLink),
   }),
   home: z.object({
@@ -120,10 +147,7 @@ export const siteContentSchema = z.object({
       body: z.string(),
       bullets: z.array(z.string()),
     }),
-    carousel: z.object({
-      title: z.string(),
-      footnote: z.string(),
-    }),
+    carousel: carouselConfig,
     workouts: z.array(workoutCard),
     franchiseTeaser: z.object({
       eyebrow: z.string(),
@@ -138,6 +162,9 @@ export const siteContentSchema = z.object({
     storyTitle: z.string(),
     storyParagraphs: z.array(z.string()),
     heroTitleColor: z.string(),
+    heroMaskEnabled: z.boolean(),
+    heroMaskOpacity: z.number(),
+    pillarsMaskEnabled: z.boolean(),
     pillarsTitle: z.string(),
     pillarsIntro: z.string(),
     pillarsHeadline: z.string(),

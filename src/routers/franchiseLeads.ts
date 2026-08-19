@@ -1,6 +1,12 @@
 import { z } from 'zod';
 import { router, publicProcedure, adminProcedure, leadsProcedure } from '../trpc';
 import { prisma } from '../db';
+import {
+  dispatchFormEmails,
+  franchiseCustomerEmail,
+  franchiseTeamEmail,
+} from '../lib/email';
+import { enforceRateLimit } from '../lib/rateLimit';
 
 const FRANCHISE_STATUSES = ['novo', 'contatado', 'qualificado', 'encerrado'] as const;
 
@@ -19,8 +25,16 @@ export const franchiseLeadsRouter = router({
       city: z.string().min(1),
       capital: z.string().min(1),
     }))
-    .mutation(async ({ input }) => {
-      return prisma.franchiseLead.create({
+    .mutation(async ({ input, ctx }) => {
+      enforceRateLimit('franchise', ctx.ip);
+      // Ver comentário em contactSubmissions: limite por destinatário evita
+      // usar a confirmação automática como spam contra terceiros.
+      enforceRateLimit('franchise-email', input.email.trim().toLowerCase(), {
+        windowMs: 60 * 60 * 1000,
+        max: 3,
+      });
+
+      const lead = await prisma.franchiseLead.create({
         data: {
           name: input.name,
           email: input.email,
@@ -29,6 +43,21 @@ export const franchiseLeadsRouter = router({
           capital: input.capital,
         },
       });
+
+      // Confirmação para o interessado + notificação para a equipe (background).
+      const payload = {
+        name: lead.name,
+        email: lead.email,
+        phone: lead.phone,
+        city: lead.city,
+        capital: lead.capital,
+      };
+      dispatchFormEmails((settings) => [
+        franchiseCustomerEmail(payload, settings),
+        franchiseTeamEmail(payload, settings),
+      ]);
+
+      return lead;
     }),
 
   updateStatus: leadsProcedure
