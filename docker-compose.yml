@@ -7,6 +7,10 @@ services:
       POSTGRES_USER: eagle
       POSTGRES_PASSWORD: eagle
       POSTGRES_DB: eagle
+      # Encoding explícito — sem isso o cluster pode nascer em locale não-UTF8
+      # e acentuação gravada pelo painel volta quebrada no site.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C.UTF-8"
+      LANG: C.UTF-8
     ports:
       - "5432:5432"
     volumes:

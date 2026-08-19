@@ -14,6 +14,10 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-eagle}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-eagle}
       POSTGRES_DB: ${POSTGRES_DB:-eagle}
+      # Encoding explícito — sem isso o cluster pode nascer em locale não-UTF8
+      # e acentuação gravada pelo painel volta quebrada no site.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C.UTF-8"
+      LANG: C.UTF-8
     volumes:
       - eagle_pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -41,8 +45,22 @@ services:
       DATABASE_PORT: 5432
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?missing BETTER_AUTH_SECRET}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:?missing BETTER_AUTH_URL}
-      CORS_ORIGIN: ${CORS_ORIGIN:?missing CORS_ORIGIN}
       SEED_ON_START: ${SEED_ON_START:-false}
+      # E-mail transacional — sem RESEND_API_KEY o form grava o lead e só não envia e-mail.
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      EMAIL_TEAM: ${EMAIL_TEAM:-}
+      EMAIL_REPLY_TO: ${EMAIL_REPLY_TO:-}
+      SITE_URL: ${SITE_URL:-}
+      # Armazenamento de mídia — fallback; o normal é configurar em Admin > Armazenamento.
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_REGION: ${S3_REGION:-}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+      S3_PUBLIC_BASE_URL: ${S3_PUBLIC_BASE_URL:-}
+      S3_FOLDER: ${S3_FOLDER:-}
+      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-}
     volumes:
       - eagle_uploads:/app/uploads
     ports:

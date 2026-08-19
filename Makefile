@@ -8,6 +8,7 @@ DB_NAME      := eagle
 
 .PHONY: help setup install env up down restart logs ps wait-db \
         db-generate db-push db-migrate db-seed db-reset db-studio psql \
+        db-fix-encoding db-fix-encoding-apply \
         dev build start clean nuke
 
 help:
@@ -30,6 +31,8 @@ help:
 	@echo "  make db-seed      Run prisma/seed.ts"
 	@echo "  make db-reset     Drop volume, recreate, push, seed"
 	@echo "  make db-studio    Open Prisma Studio"
+	@echo "  make db-fix-encoding        Report mojibake (acentos quebrados) no banco"
+	@echo "  make db-fix-encoding-apply  Corrige mojibake no banco (grava)"
 	@echo "  make psql         psql shell into container"
 	@echo ""
 	@echo "  make dev          Start API in watch mode"
@@ -93,6 +96,12 @@ db-reset: down
 
 db-studio:
 	$(PM) run db:studio
+
+db-fix-encoding:
+	$(PM) run db:fix-encoding
+
+db-fix-encoding-apply:
+	$(PM) run db:fix-encoding -- --apply
 
 psql:
 	docker exec -it $(DB_CONTAINER) psql -U $(DB_USER) -d $(DB_NAME)

@@ -6,6 +6,8 @@ import { auth } from './auth';
 export interface Context {
   userId?: string;
   userRole?: string;
+  /** IP do cliente — usado no rate limit dos formulários públicos. */
+  ip?: string;
 }
 
 export async function createContext({ req }: CreateExpressContextOptions): Promise<Context> {
@@ -13,12 +15,16 @@ export async function createContext({ req }: CreateExpressContextOptions): Promi
     headers: fromNodeHeaders(req.headers),
   });
 
-  if (!session?.user) return {};
+  // `trust proxy` está ligado no Express, então req.ip já respeita X-Forwarded-For.
+  const ip = req.ip ?? req.socket.remoteAddress ?? undefined;
+
+  if (!session?.user) return { ip };
 
   const user = session.user as { id: string; role?: string; active?: boolean };
-  if (user.active === false) return {};
+  if (user.active === false) return { ip };
 
   return {
+    ip,
     userId: user.id,
     userRole: user.role ?? 'editor',
   };

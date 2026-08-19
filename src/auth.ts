@@ -28,10 +28,13 @@ export const auth = betterAuth({
       },
     },
   },
-  trustedOrigins: [
-    process.env.CORS_ORIGIN ?? 'http://localhost:5173',
-    'http://localhost:3000',
-  ],
+  // Qualquer origem: '*' casa com qualquer host no matcher do better-auth.
+  trustedOrigins: ['*'],
+  advanced: {
+    // Desliga a checagem de CSRF/origem do better-auth — senão o login continua
+    // recusando request de origem não listada, mesmo com o CORS aberto.
+    disableCSRFCheck: true,
+  },
 });
 
 export type AuthUser = typeof auth.$Infer.Session.user;
