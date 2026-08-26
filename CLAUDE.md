@@ -32,6 +32,8 @@ make db-push    # prisma db push
 make db-seed    # cria admin@admin.com / admin@123 + siteContent.main
 make db-reset   # drop volume + recreate + push + seed
 make db-studio  # Prisma Studio
+make uploads-optimize        # relata quanto dá pra comprimir nas imagens já em uploads/
+make uploads-optimize-apply  # comprime as imagens de uploads/ (grava, mantém nome e extensão)
 make psql       # psql shell no container
 make dev        # pnpm run dev (tsx watch)
 make nuke       # destrói volume (DATA LOSS)
@@ -137,6 +139,29 @@ Regras que valem nos dois modos:
   provedor, que é o caminho de diagnóstico no painel.
 - Segredo nunca sai do backend: `get` devolve `hasSecret`, `secretPreview` e `secretSource`.
 
+### Compressão automática de imagem (`src/lib/imageOptimize.ts`)
+
+Toda imagem que entra por `POST /api/upload` é reprocessada **antes** de ir para o disco/bucket:
+
+- reduzida para no máximo **2560px** no maior lado e convertida para **WebP q82** (sharp);
+- metadados EXIF descartados (a orientação é aplicada antes, com `.rotate()`);
+- vídeo, GIF e SVG passam intactos; WebP menor que 60 KB (o que sai do editor de recorte) é ignorado;
+- se o resultado ficar maior que o original, **o original é mantido**;
+- qualquer erro do sharp devolve o arquivo original — upload nunca quebra por causa da compressão.
+
+A resposta ganhou `optimized`, `originalSize` e `size` (além de `url`/`provider`), que o painel usa
+para mostrar "9.15 MB → 180 KB". O front também comprime antes de subir
+(`eagle-front/src/lib/imageCompress.ts`); as duas pontas são independentes de propósito — quem
+manda arquivo direto na API continua caindo na compressão do servidor.
+
+Referência real do acervo: o `logo.png` do menu tinha 9,2 MB em 15974x20042px e vira 54 KB.
+
+**Acervo antigo** (`src/lib/optimizeUploads.ts`): o que foi enviado antes desta versão continua do
+tamanho original. O router `mediaLibrary` expõe `scanUploads` (simulação) e `optimizeUploads`
+(grava), ambos `contentProcedure` — é o botão em Admin > Mídias. Mesma lógica do
+`make uploads-optimize[-apply]`. Aqui **nome e extensão são preservados** (PNG continua PNG): o
+`SiteContent` guarda o caminho do arquivo, e trocar a extensão quebraria as referências do site.
+
 - Endpoint: `POST /api/upload` (multer disco) — devolve **caminho relativo** (`/uploads/<file>`) no modo local
 - Limite: 100 MB
 - Servidos em `/uploads/<file>` (static) com `Cache-Control: 1 ano immutable` + `Access-Control-Allow-Origin: *`
@@ -166,6 +191,19 @@ Regras que valem nos dois modos:
 - Disparo em background (`dispatchFormEmails`) — falha de e-mail nunca derruba a mutation.
 - `SendEmailResult` é achatado de propósito (`ok`/`skipped`/`id`/`error`): o front lê esses tipos pelo
   submodule e o tsconfig de lá não liga `strict`, então union discriminada não estreita.
+
+### Lixeira de leads e contatos (`src/lib/trash.ts`)
+
+- Excluir no painel é **soft delete**: carimba `deletedAt`, o registro sai das listas e pode ser
+  restaurado. Retenção de 30 dias (`TRASH_RETENTION_DAYS`).
+- `list` filtra `deletedAt: null`; `listDeleted` traz a lixeira.
+- Permissões: `delete`/`restore` são `leadsProcedure` (admin e user — quem opera o quadro);
+  `purge`/`purgeAll` (exclusão definitiva) são `adminProcedure`.
+- `purgeExpiredTrash()` roda **a partir das queries de listagem**, com throttle de 1h — a aplicação
+  não tem agendador, e é um `deleteMany` indexado por `deletedAt`. Nunca lança: falhar ali não pode
+  derrubar a tela de leads.
+- `ContactSubmission.respondedAt` é carimbado ao entrar em `respondido` e limpo ao sair. A situação
+  "em atraso" **não** é gravada — o front deriva pela idade (ver `AdminLeadsPanel`).
 
 ### Rate limit (`src/lib/rateLimit.ts`)
 
@@ -284,16 +322,22 @@ eagle-back/
 │   ├── franchiseLeads.ts          # CRUD leads (leadsProcedure)
 │   ├── contactSubmissions.ts      # CRUD contatos (leadsProcedure)
 │   ├── emailSettings.ts           # config de e-mail + teste de envio (adminProcedure)
+│   ├── mediaLibrary.ts            # comprimir imagens já enviadas (contentProcedure)
 │   ├── storageSettings.ts         # config de armazenamento + teste de conexão (adminProcedure)
 │   └── siteContent.ts             # get/update/reset (contentProcedure)
 ├── src/lib/
 │   ├── email.ts                   # templates + envio via API HTTP do Resend
 │   ├── emailSettings.ts           # config no banco (painel) + fallback por env
 │   ├── mojibake.ts                # reparo de acentuação (sequência por sequência)
+│   ├── imageOptimize.ts           # comprime imagem do upload (sharp -> WebP 2560px)
+│   ├── optimizeUploads.ts         # comprime o acervo já em uploads/ (painel + script)
 │   ├── storage.ts                 # grava upload no disco ou no bucket (S3/Spaces)
+│   ├── trash.ts                   # soft delete + expurgo da lixeira (30 dias)
 │   ├── storageSettings.ts         # config no banco (painel) + fallback por env
 │   └── rateLimit.ts               # limite dos formulários públicos (memória)
 ├── src/scripts/fixEncoding.ts     # repara mojibake no banco (dry-run por default)
+├── src/scripts/optimizeExistingUploads.ts  # comprime imagens já em uploads/ (dry-run por default)
+├── EMAIL.md                       # guia de configuração do Resend + DNS (SPF/DKIM/DMARC)
 ├── src/auth.ts                    # better-auth config
 └── src/index.ts                   # express + multer upload + cors + trust proxy
 
