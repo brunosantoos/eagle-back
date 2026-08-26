@@ -67,26 +67,38 @@ model SiteContent {
 }
 
 model FranchiseLead {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   name      String
   email     String
   phone     String
   city      String
   capital   String
-  status    String   @default("novo")
-  notes     String   @default("")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  status    String    @default("novo")
+  notes     String    @default("")
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  /// Preenchido ao excluir: o registro sai das listas mas continua na lixeira.
+  /// Exclusão de verdade só pelo expurgo (30 dias) ou pelo botão "excluir de vez".
+  deletedAt DateTime?
+
+  @@index([deletedAt])
 }
 
 model ContactSubmission {
-  id        String   @id @default(cuid())
-  name      String
-  email     String
-  phone     String  @default("")
-  message   String
-  status    String  @default("novo")
-  notes     String  @default("")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String    @id @default(cuid())
+  name        String
+  email       String
+  phone       String    @default("")
+  message     String
+  status      String    @default("novo")
+  notes       String    @default("")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  /// Ver FranchiseLead.deletedAt.
+  deletedAt   DateTime?
+  /// Momento em que a equipe marcou a mensagem como respondida — base do
+  /// "respondida em X dias" e do cálculo de atraso.
+  respondedAt DateTime?
+
+  @@index([deletedAt])
 }
