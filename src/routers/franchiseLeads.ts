@@ -7,13 +7,27 @@ import {
   franchiseTeamEmail,
 } from '../lib/email';
 import { enforceRateLimit } from '../lib/rateLimit';
+import { purgeExpiredTrash } from '../lib/trash';
 
 const FRANCHISE_STATUSES = ['novo', 'contatado', 'qualificado', 'encerrado'] as const;
 
 export const franchiseLeadsRouter = router({
   list: leadsProcedure.query(async () => {
+    // Momento natural para o expurgo: alguém abriu o painel, e o custo é um
+    // deleteMany indexado por deletedAt.
+    void purgeExpiredTrash();
     return prisma.franchiseLead.findMany({
+      where: { deletedAt: null },
       orderBy: { createdAt: 'desc' },
+    });
+  }),
+
+  /** Conteúdo da lixeira, do mais recente para o mais antigo. */
+  listDeleted: leadsProcedure.query(async () => {
+    void purgeExpiredTrash();
+    return prisma.franchiseLead.findMany({
+      where: { deletedAt: { not: null } },
+      orderBy: { deletedAt: 'desc' },
     });
   }),
 
@@ -84,10 +98,41 @@ export const franchiseLeadsRouter = router({
       });
     }),
 
-  delete: adminProcedure
+  /** Manda para a lixeira. O registro continua no banco. */
+  delete: leadsProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ input }) => {
+      await prisma.franchiseLead.update({
+        where: { id: input.id },
+        data: { deletedAt: new Date() },
+      });
+      return { success: true };
+    }),
+
+  /** Tira da lixeira e devolve para o quadro. */
+  restore: leadsProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ input }) => {
+      await prisma.franchiseLead.update({
+        where: { id: input.id },
+        data: { deletedAt: null },
+      });
+      return { success: true };
+    }),
+
+  /** Exclusão definitiva — só admin, e sem volta. */
+  purge: adminProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input }) => {
       await prisma.franchiseLead.delete({ where: { id: input.id } });
       return { success: true };
     }),
+
+  /** Esvazia a lixeira de leads de uma vez — só admin. */
+  purgeAll: adminProcedure.mutation(async () => {
+    const { count } = await prisma.franchiseLead.deleteMany({
+      where: { deletedAt: { not: null } },
+    });
+    return { count };
+  }),
 });

@@ -101,6 +101,16 @@ export const siteContentSchema = z.object({
     about: z.string(),
     franchise: z.string(),
   }),
+  // Ids de fonte do catálogo do front (`eagle-front/src/lib/fonts.ts`).
+  // Opcional para não invalidar o conteúdo salvo antes desta versão — o front
+  // completa com o padrão em `mergeSiteContent`.
+  typography: z
+    .object({
+      heading: z.string(),
+      body: z.string(),
+      display: z.string(),
+    })
+    .optional(),
   privacyPolicy: z.object({
     title: z.string(),
     content: z.string(),

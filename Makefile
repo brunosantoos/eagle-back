@@ -9,6 +9,7 @@ DB_NAME      := eagle
 .PHONY: help setup install env up down restart logs ps wait-db \
         db-generate db-push db-migrate db-seed db-reset db-studio psql \
         db-fix-encoding db-fix-encoding-apply \
+        uploads-optimize uploads-optimize-apply \
         dev build start clean nuke
 
 help:
@@ -33,6 +34,8 @@ help:
 	@echo "  make db-studio    Open Prisma Studio"
 	@echo "  make db-fix-encoding        Report mojibake (acentos quebrados) no banco"
 	@echo "  make db-fix-encoding-apply  Corrige mojibake no banco (grava)"
+	@echo "  make uploads-optimize       Relata quanto dá pra comprimir em uploads/"
+	@echo "  make uploads-optimize-apply Comprime as imagens de uploads/ (grava)"
 	@echo "  make psql         psql shell into container"
 	@echo ""
 	@echo "  make dev          Start API in watch mode"
@@ -102,6 +105,12 @@ db-fix-encoding:
 
 db-fix-encoding-apply:
 	$(PM) run db:fix-encoding -- --apply
+
+uploads-optimize:
+	$(PM) run uploads:optimize
+
+uploads-optimize-apply:
+	$(PM) run uploads:optimize -- --apply
 
 psql:
 	docker exec -it $(DB_CONTAINER) psql -U $(DB_USER) -d $(DB_NAME)

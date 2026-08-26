@@ -7,13 +7,30 @@ import {
   dispatchFormEmails,
 } from '../lib/email';
 import { enforceRateLimit } from '../lib/rateLimit';
+import { purgeExpiredTrash } from '../lib/trash';
 
 const CONTACT_STATUSES = ['novo', 'lido', 'respondido'] as const;
 
+/** Registro excluído some das listas — ver `lib/trash.ts`. */
+const NOT_DELETED = { deletedAt: null };
+
 export const contactSubmissionsRouter = router({
   list: leadsProcedure.query(async () => {
+    // Momento natural para o expurgo: alguém abriu o painel, e o custo é um
+    // deleteMany indexado por deletedAt.
+    void purgeExpiredTrash();
     return prisma.contactSubmission.findMany({
+      where: NOT_DELETED,
       orderBy: { createdAt: 'desc' },
+    });
+  }),
+
+  /** Conteúdo da lixeira, do mais recente para o mais antigo. */
+  listDeleted: leadsProcedure.query(async () => {
+    void purgeExpiredTrash();
+    return prisma.contactSubmission.findMany({
+      where: { deletedAt: { not: null } },
+      orderBy: { deletedAt: 'desc' },
     });
   }),
 
@@ -67,7 +84,12 @@ export const contactSubmissionsRouter = router({
     .mutation(async ({ input }) => {
       return prisma.contactSubmission.update({
         where: { id: input.id },
-        data: { status: input.status },
+        data: {
+          status: input.status,
+          // Carimba quando entra em "respondido" e limpa ao voltar atrás — é o
+          // que sustenta o "respondida em X dias" e o cálculo de atraso.
+          respondedAt: input.status === 'respondido' ? new Date() : null,
+        },
       });
     }),
 
@@ -83,10 +105,41 @@ export const contactSubmissionsRouter = router({
       });
     }),
 
-  delete: adminProcedure
+  /** Manda para a lixeira. O registro continua no banco. */
+  delete: leadsProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ input }) => {
+      await prisma.contactSubmission.update({
+        where: { id: input.id },
+        data: { deletedAt: new Date() },
+      });
+      return { success: true };
+    }),
+
+  /** Tira da lixeira e devolve para o quadro. */
+  restore: leadsProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ input }) => {
+      await prisma.contactSubmission.update({
+        where: { id: input.id },
+        data: { deletedAt: null },
+      });
+      return { success: true };
+    }),
+
+  /** Exclusão definitiva — só admin, e sem volta. */
+  purge: adminProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input }) => {
       await prisma.contactSubmission.delete({ where: { id: input.id } });
       return { success: true };
     }),
+
+  /** Esvazia a lixeira de contatos de uma vez — só admin. */
+  purgeAll: adminProcedure.mutation(async () => {
+    const { count } = await prisma.contactSubmission.deleteMany({
+      where: { deletedAt: { not: null } },
+    });
+    return { count };
+  }),
 });
