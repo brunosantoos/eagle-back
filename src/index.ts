@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
+import compression from 'compression';
 import cors from 'cors';
 import multer from 'multer';
 import { toNodeHandler } from 'better-auth/node';
@@ -13,6 +14,7 @@ import {
   storeUploadedFile,
   uploadsDir,
 } from './lib/storage';
+import { optimizeUploadedImage } from './lib/imageOptimize';
 
 const app = express();
 
@@ -31,6 +33,11 @@ app.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS) || 1);
 // Sem restrição de origem, a proteção contra requisição de outro site fica só no
 // SameSite=Lax do cookie de sessão.
 app.use(cors({ origin: true, credentials: true }));
+
+// Gzip nas respostas de texto — o `siteContent.get` devolve o JSON inteiro do
+// site (rich text + URLs) em toda visita. Imagem e vídeo já são comprimidos e
+// o `compression` os ignora pelo content-type.
+app.use(compression());
 
 ensureUploadsDir();
 
@@ -100,8 +107,23 @@ app.post('/api/upload', (req, res) => {
       }
 
       try {
-        const stored = await storeUploadedFile(req.file);
-        res.json({ url: stored.url, provider: stored.provider });
+        // Comprime antes de guardar: o que chega do painel costuma ser o
+        // arquivo original do designer (PNG de 9 MB, foto de celular em 4K).
+        const optimized = await optimizeUploadedImage(req.file);
+        const stored = await storeUploadedFile({
+          ...req.file,
+          path: optimized.path,
+          filename: optimized.filename,
+          mimetype: optimized.mimetype,
+          size: optimized.size,
+        });
+        res.json({
+          url: stored.url,
+          provider: stored.provider,
+          optimized: optimized.optimized,
+          originalSize: optimized.originalSize,
+          size: optimized.size,
+        });
       } catch (uploadError) {
         console.error('[upload] falha ao armazenar arquivo:', uploadError);
         res.status(500).json({ error: 'Falha ao armazenar o arquivo.' });
