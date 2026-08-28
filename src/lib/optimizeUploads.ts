@@ -18,14 +18,32 @@ import { isS3Ready, loadStorageSettings } from './storageSettings';
  * economia vem do redimensionamento e da recompressão.
  */
 
-/** Maior lado permitido — mesmo limite do upload. */
-const MAX_DIMENSION = 2560;
+/**
+ * Maior lado permitido. Alto de propósito: o objetivo é derrubar o arquivo fora
+ * de escala, não reencodar foto que o site já usa bem.
+ */
+const MAX_DIMENSION = 4500;
 
-/** Abaixo disso não compensa reprocessar. */
-const MIN_BYTES = 60 * 1024;
+/** Qualidade da recompressão. Alta — a queixa do cliente foi perda visível. */
+const QUALITY = 92;
 
-/** Ganho mínimo para valer a reescrita. Menos que isso, o arquivo fica como está. */
-const MIN_SAVING_RATIO = 0.05;
+/**
+ * Abaixo disso o arquivo nem entra na lista.
+ *
+ * Era 60 KB, e por isso a rotina pegava **todas** as imagens do acervo, incluindo
+ * as que já estavam no tamanho certo, e reencodava cada uma em q82 — foi o que
+ * transformou 436 MB em 13 MB numa passada só. Com 1,5 MB a lista fica com o que
+ * de fato pesa no carregamento do site.
+ */
+const MIN_BYTES = 1_500 * 1024;
+
+/**
+ * Ganho mínimo para valer a reescrita.
+ *
+ * Era 5%: qualquer arquivo "melhorava" 5% e era reescrito, trocando qualidade
+ * por quase nada. Com 30% só sobra o caso em que a troca compensa de verdade.
+ */
+const MIN_SAVING_RATIO = 0.30;
 
 const EXT_BY_FORMAT: Record<string, string[]> = {
   jpeg: ['.jpg', '.jpeg'],
@@ -94,7 +112,9 @@ export async function optimizeUploadsFolder({
   for (const name of names) {
     const file = path.join(uploadsDir, name);
     const stat = await fs.promises.stat(file).catch(() => null);
-    if (!stat?.isFile() || stat.size < MIN_BYTES) continue;
+    // Arquivo pequeno passa direto: só entra na lista o que pesa, ou o que está
+    // fora de escala (conferido abaixo, depois de ler as dimensões).
+    if (!stat?.isFile()) continue;
 
     const format = formatFor(path.extname(name));
     if (!format) continue;
@@ -110,6 +130,8 @@ export async function optimizeUploadsFolder({
       const needsResize =
         (meta.width ?? 0) > MAX_DIMENSION || (meta.height ?? 0) > MAX_DIMENSION;
 
+      if (stat.size < MIN_BYTES && !needsResize) continue;
+
       const resized = pipeline.resize({
         width: needsResize ? MAX_DIMENSION : undefined,
         height: needsResize ? MAX_DIMENSION : undefined,
@@ -120,11 +142,14 @@ export async function optimizeUploadsFolder({
       const buffer =
         format === 'png'
           ? await resized
-              .png({ compressionLevel: 9, palette: true, quality: 90, effort: 10 })
+              // Sem `palette`: ele reduz a imagem a 256 cores. Em ícone e
+              // desenho é invisível, em foto é degradê virando faixa — e o
+              // acervo aqui é foto.
+              .png({ compressionLevel: 9, effort: 10 })
               .toBuffer()
           : format === 'jpeg'
-            ? await resized.jpeg({ quality: 82, mozjpeg: true }).toBuffer()
-            : await resized.webp({ quality: 82, effort: 4 }).toBuffer();
+            ? await resized.jpeg({ quality: QUALITY, mozjpeg: true }).toBuffer()
+            : await resized.webp({ quality: QUALITY, effort: 4 }).toBuffer();
 
       // Ganho pequeno não compensa reescrever (e perder qualidade à toa).
       if (buffer.length >= stat.size * (1 - MIN_SAVING_RATIO)) continue;

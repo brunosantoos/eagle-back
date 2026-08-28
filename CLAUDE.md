@@ -139,26 +139,38 @@ Regras que valem nos dois modos:
   provedor, que é o caminho de diagnóstico no painel.
 - Segredo nunca sai do backend: `get` devolve `hasSecret`, `secretPreview` e `secretSource`.
 
-### Compressão automática de imagem (`src/lib/imageOptimize.ts`)
+### Compressão de imagem — só quando pedida
 
-Toda imagem que entra por `POST /api/upload` é reprocessada **antes** de ir para o disco/bucket:
+**O upload não mexe na qualidade da imagem.** Até 15 MB e 4500px no maior lado, o arquivo do
+cliente vai para o disco/bucket byte a byte, sem reencode.
 
-- reduzida para no máximo **2560px** no maior lado e convertida para **WebP q82** (sharp);
-- metadados EXIF descartados (a orientação é aplicada antes, com `.rotate()`);
-- vídeo, GIF e SVG passam intactos; WebP menor que 60 KB (o que sai do editor de recorte) é ignorado;
-- se o resultado ficar maior que o original, **o original é mantido**;
+Antes não era assim: o navegador reduzia para 2560px em WebP q82 (`imageCompress.ts`) e o servidor
+fazia o mesmo de novo — duas perdas empilhadas sobre um arquivo que já saía comprimido da câmera.
+Uma foto de 832 KB chegava ao site com 285 KB, e a queda era visível. Comprimir virou uma decisão
+explícita de quem está no painel.
+
+O que sobrou em `src/lib/imageOptimize.ts` é rede de segurança para o arquivo fora de escala (o PNG
+de 9 MB em 16000x20000px que o designer manda sem pensar):
+
+- entra só acima de **4500px** no maior lado **ou** acima de **15 MB**;
+- quando entra, reduz para 4500px e converte para **WebP q95** (era q82);
+- metadados EXIF descartados (orientação aplicada antes, com `.rotate()`);
+- vídeo, GIF e SVG passam intactos;
+- se o resultado ficar maior que o original, o original é mantido;
 - qualquer erro do sharp devolve o arquivo original — upload nunca quebra por causa da compressão.
 
-A resposta ganhou `optimized`, `originalSize` e `size` (além de `url`/`provider`), que o painel usa
-para mostrar "9.15 MB → 180 KB". O front também comprime antes de subir
-(`eagle-front/src/lib/imageCompress.ts`); as duas pontas são independentes de propósito — quem
-manda arquivo direto na API continua caindo na compressão do servidor.
+A resposta traz `optimized`, `originalSize` e `size` além de `url`/`provider`. `optimized: false` é
+o caso normal agora.
 
-Referência real do acervo: o `logo.png` do menu tinha 9,2 MB em 15974x20042px e vira 54 KB.
+**Compressão sob demanda** (`src/lib/optimizeUploads.ts`): é o botão "Comprimir imagens já enviadas"
+em Admin > Mídias, e o único lugar que recomprime imagem de propósito. O router `mediaLibrary` expõe
+`scanUploads` (simulação) e `optimizeUploads` (grava), ambos `contentProcedure`.
 
-**Acervo antigo** (`src/lib/optimizeUploads.ts`): o que foi enviado antes desta versão continua do
-tamanho original. O router `mediaLibrary` expõe `scanUploads` (simulação) e `optimizeUploads`
-(grava), ambos `contentProcedure` — é o botão em Admin > Mídias. Mesma lógica do
+Os limites daqui foram reescritos pelo mesmo motivo: com `MIN_BYTES` em 60 KB e ganho mínimo de 5%,
+a rotina pegava **todo** o acervo e reencodava tudo em q82 — foi o que virou 436 MB em 13 MB numa
+passada só, com perda visível. Agora só entra na lista o que passa de **1,5 MB** ou está fora de
+escala, a qualidade é **92** e o arquivo só é reescrito com ganho de **30%** ou mais. O `png()`
+perdeu o `palette: true`, que reduzia a foto a 256 cores. Mesma lógica do
 `make uploads-optimize[-apply]`. Aqui **nome e extensão são preservados** (PNG continua PNG): o
 `SiteContent` guarda o caminho do arquivo, e trocar a extensão quebraria as referências do site.
 

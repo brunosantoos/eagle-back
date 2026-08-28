@@ -3,15 +3,21 @@ import path from 'path';
 import sharp from 'sharp';
 
 /**
- * Compressão automática das imagens enviadas pelo painel.
+ * Rede de segurança das imagens enviadas pelo painel.
  *
- * O acervo do site tinha PNG de 9 MB (16000x20000px) porque o admin envia o
- * arquivo direto da câmera/designer. Aqui o arquivo é reduzido para o que o
- * site realmente usa: no máximo `MAX_DIMENSION` px no maior lado, convertido
- * para WebP (ou AVIF quando compensa), sem metadados EXIF.
+ * **A imagem não é mais reprocessada por padrão.** Antes toda foto era reduzida
+ * para 2560px e reencodada em WebP q82 aqui — e o navegador já tinha feito o
+ * mesmo antes de subir. Duas perdas empilhadas em cima de um arquivo que já saía
+ * comprimido da câmera, e a queda de qualidade era visível no site.
+ *
+ * Comprimir virou um ato explícito: o botão "Comprimir imagens já enviadas"
+ * (Admin > Mídias, `lib/optimizeUploads.ts`). Aqui só sobra o caso extremo —
+ * o PNG de 9 MB em 16000x20000px que o designer manda sem pensar, e que
+ * derrubaria o carregamento do site.
  *
  * Regras de segurança:
  * - Vídeo, GIF e SVG passam intactos (sharp não deve mexer neles).
+ * - Arquivo dentro dos limites passa **byte a byte**, sem reencode.
  * - Se o resultado ficar maior que o original, o original é mantido.
  * - Qualquer erro do sharp devolve o arquivo original — upload nunca quebra.
  * - O arquivo de entrada **nunca** é apagado num caminho de erro. Quando a
@@ -19,14 +25,21 @@ import sharp from 'sharp';
  *   "saída" no `catch` apagava o próprio upload (ver `sameFile` abaixo).
  */
 
-/** Maior lado permitido. Hero em 4K ainda cabe; foto de 20000px não. */
-const MAX_DIMENSION = 2560;
+/**
+ * Maior lado tolerado sem reprocessar. Alto de propósito: é mais que o dobro do
+ * maior hero do site, então quem manda foto de câmera passa intacto e só o
+ * arquivo realmente absurdo é reduzido.
+ */
+const MAX_DIMENSION = 4500;
 
-/** Qualidade do WebP. 82 é o ponto onde a perda deixa de ser perceptível. */
-const WEBP_QUALITY = 82;
+/** Qualidade do WebP quando a rede de segurança precisa reencodar. */
+const WEBP_QUALITY = 95;
 
-/** Abaixo disso não vale reprocessar (ícone, logo já otimizado). */
-const MIN_BYTES_TO_PROCESS = 60 * 1024;
+/**
+ * A partir deste tamanho o arquivo é reprocessado mesmo cabendo em
+ * `MAX_DIMENSION` — acima disso o custo de banda no site supera a perda.
+ */
+const MAX_BYTES_TO_KEEP = 15 * 1024 * 1024;
 
 /** Formatos que o sharp reprocessa com segurança. */
 const OPTIMIZABLE = new Set([
@@ -89,11 +102,6 @@ export async function optimizeUploadedImage(file: {
 
   if (!isOptimizableImage(file.mimetype)) return keepOriginal();
 
-  // WebP pequeno já veio do editor de recorte do painel — não reprocessa.
-  if (file.mimetype === 'image/webp' && file.size < MIN_BYTES_TO_PROCESS) {
-    return keepOriginal();
-  }
-
   const dir = path.dirname(file.path);
   const outName = webpNameFor(file.filename);
   const outPath = path.join(dir, outName);
@@ -110,10 +118,11 @@ export async function optimizeUploadedImage(file: {
     const meta = await pipeline.metadata();
     const needsResize =
       (meta.width ?? 0) > MAX_DIMENSION || (meta.height ?? 0) > MAX_DIMENSION;
+    const tooHeavy = file.size > MAX_BYTES_TO_KEEP;
 
-    // WebP que já chegou pronto do navegador e cabe no limite: recomprimir
-    // seria q82 sobre q82 — perde qualidade sem ganhar tamanho.
-    if (file.mimetype === 'image/webp' && !needsResize) return keepOriginal();
+    // O caminho normal para aqui: a imagem do cliente vai para o site como ela
+    // é. Só arquivo fora de escala segue para o reencode.
+    if (!needsResize && !tooHeavy) return keepOriginal();
 
     const buffer = await pipeline
       .resize({
