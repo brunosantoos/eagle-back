@@ -14,6 +14,9 @@ import sharp from 'sharp';
  * - Vídeo, GIF e SVG passam intactos (sharp não deve mexer neles).
  * - Se o resultado ficar maior que o original, o original é mantido.
  * - Qualquer erro do sharp devolve o arquivo original — upload nunca quebra.
+ * - O arquivo de entrada **nunca** é apagado num caminho de erro. Quando a
+ *   entrada já é `.webp`, o nome de saída é o mesmo da entrada, e apagar a
+ *   "saída" no `catch` apagava o próprio upload (ver `sameFile` abaixo).
  */
 
 /** Maior lado permitido. Hero em 4K ainda cabe; foto de 20000px não. */
@@ -62,6 +65,12 @@ function webpNameFor(filename: string): string {
  *
  * Devolve sempre um descritor válido: no pior caso, o do arquivo original.
  * O arquivo antigo só é apagado depois que o novo está gravado.
+ *
+ * A gravação é `toBuffer()` + `writeFile` (e não `toFile`) de propósito: o
+ * painel comprime a imagem no navegador antes de subir, então a entrada
+ * costuma ser `.webp` e o `toFile` no mesmo caminho falha com
+ * "Cannot use same file for input and output". Mesma abordagem do
+ * `lib/optimizeUploads.ts`.
  */
 export async function optimizeUploadedImage(file: {
   path: string;
@@ -88,6 +97,8 @@ export async function optimizeUploadedImage(file: {
   const dir = path.dirname(file.path);
   const outName = webpNameFor(file.filename);
   const outPath = path.join(dir, outName);
+  /** Entrada `.webp`: o nome de saída é o mesmo da entrada. */
+  const sameFile = path.resolve(outPath) === path.resolve(file.path);
 
   try {
     const pipeline = sharp(file.path, {
@@ -100,7 +111,11 @@ export async function optimizeUploadedImage(file: {
     const needsResize =
       (meta.width ?? 0) > MAX_DIMENSION || (meta.height ?? 0) > MAX_DIMENSION;
 
-    await pipeline
+    // WebP que já chegou pronto do navegador e cabe no limite: recomprimir
+    // seria q82 sobre q82 — perde qualidade sem ganhar tamanho.
+    if (file.mimetype === 'image/webp' && !needsResize) return keepOriginal();
+
+    const buffer = await pipeline
       .resize({
         width: needsResize ? MAX_DIMENSION : undefined,
         height: needsResize ? MAX_DIMENSION : undefined,
@@ -108,21 +123,17 @@ export async function optimizeUploadedImage(file: {
         withoutEnlargement: true,
       })
       .webp({ quality: WEBP_QUALITY, effort: 4 })
-      .toFile(outPath);
-
-    const { size } = await fs.promises.stat(outPath);
+      .toBuffer();
 
     // Comprimir e ficar maior acontece com PNG pequeno de poucas cores.
-    if (size >= file.size && !needsResize) {
-      await fs.promises.unlink(outPath).catch(() => {});
-      return keepOriginal();
-    }
+    if (buffer.length >= file.size && !needsResize) return keepOriginal();
 
-    await fs.promises.unlink(file.path).catch(() => {});
+    await fs.promises.writeFile(outPath, buffer);
+    if (!sameFile) await fs.promises.unlink(file.path).catch(() => {});
 
     console.log(
       `[upload] ${file.filename} ${(file.size / 1024 / 1024).toFixed(2)} MB -> ` +
-        `${outName} ${(size / 1024 / 1024).toFixed(2)} MB` +
+        `${outName} ${(buffer.length / 1024 / 1024).toFixed(2)} MB` +
         (needsResize ? ` (redimensionado de ${meta.width}x${meta.height})` : ''),
     );
 
@@ -130,13 +141,14 @@ export async function optimizeUploadedImage(file: {
       path: outPath,
       filename: outName,
       mimetype: 'image/webp',
-      size,
+      size: buffer.length,
       optimized: true,
       originalSize: file.size,
     };
   } catch (err) {
     console.error('[upload] falha ao comprimir a imagem, mantendo original:', err);
-    await fs.promises.unlink(outPath).catch(() => {});
+    // `sameFile`: apagar aqui apagaria o arquivo que acabou de subir.
+    if (!sameFile) await fs.promises.unlink(outPath).catch(() => {});
     return keepOriginal();
   }
 }

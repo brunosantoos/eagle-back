@@ -285,6 +285,8 @@ Tiptap com `StarterKit` + `TextAlign` + `TextStyle` + `FontFamily` + `Underline`
 - **Optimistic updates:** sempre que mutation altera lista visível, use `useUtils().<router>.<query>.setData()` em `onMutate` + rollback em `onError` + `invalidate` em `onSettled`.
 - **tRPC `onMutate` typing quirk (v11):** `variables` aparece como `void | Partial<Input>`. Workaround: cast com `as { ... }` dentro da callback.
 - **Schema changes:** após editar `schema.prisma`, sempre rode `make db-generate db-push` antes de qualquer mutation/seed.
+- **Compressão de imagem nunca apaga a entrada.** `lib/imageOptimize.ts` grava com `toBuffer()` + `writeFile` (não `toFile`) porque o front já sobe `.webp` e o nome de saída coincide com o de entrada. O `catch` só remove `outPath` quando ele é um arquivo diferente do enviado — foi exatamente esse `unlink` que apagava o upload e deixava o site com 404.
+- **`textStyles` no zod é opcional.** Mesmo motivo de `typography`: conteúdo salvo antes da mudança precisa continuar passando no `siteContentSchema`.
 
 ---
 
@@ -304,6 +306,7 @@ Tiptap com `StarterKit` + `TextAlign` + `TextStyle` + `FontFamily` + `Underline`
 | Nenhum e-mail de confirmação chega | Sem chave cadastrada, envio desligado ou remetente não verificado | Admin > E-mail: conferir status e usar "Enviar teste" |
 | Upload volta `/uploads/...` mesmo com bucket configurado | PUT no bucket falhou (fallback automático) | Ver `[storage]` no log e usar "Testar conexão" |
 | Imagem do bucket dá 403 no site | Objeto sem ACL pública ou bucket privado | Conferir permissão do Space; o PUT já manda `public-read` |
+| Upload responde 200 mas a imagem dá 404 | `Cannot use same file for input and output` no sharp: o painel já sobe `.webp`, o nome de saída era o mesmo da entrada e o `catch` apagava o arquivo | Corrigido em `lib/imageOptimize.ts` (`toBuffer` + guarda `sameFile`); `/api/upload` agora confere o arquivo antes de responder 200 |
 
 ---
 

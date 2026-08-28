@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import fs from 'fs';
 import express from 'express';
 import compression from 'compression';
 import cors from 'cors';
@@ -110,6 +111,23 @@ app.post('/api/upload', (req, res) => {
         // Comprime antes de guardar: o que chega do painel costuma ser o
         // arquivo original do designer (PNG de 9 MB, foto de celular em 4K).
         const optimized = await optimizeUploadedImage(req.file);
+
+        // Confere que o arquivo existe antes de responder 200. Sem isso, uma
+        // falha no passo de compressão devolvia uma URL que o painel gravava
+        // no site e que só dava 404 depois, na hora de exibir a imagem.
+        try {
+          await fs.promises.access(optimized.path, fs.constants.R_OK);
+        } catch {
+          console.error(
+            '[upload] arquivo sumiu depois da compressão:',
+            optimized.path,
+          );
+          res.status(500).json({
+            error: 'O arquivo não foi gravado no servidor. Tente novamente.',
+          });
+          return;
+        }
+
         const stored = await storeUploadedFile({
           ...req.file,
           path: optimized.path,

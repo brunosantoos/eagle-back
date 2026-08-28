@@ -78,6 +78,24 @@ const mediaEffect = z.object({
   blur: z.number(),
 });
 
+/**
+ * Formatação de um campo de texto (ver `TextStyle` no front).
+ * Campos opcionais: conteúdo salvo antes desta versão não tem nada aqui, e o
+ * `mergeSiteContent` do front completa com o padrão.
+ */
+const textStyle = z.object({
+  font: z.string().optional(),
+  fontSize: z.number().nullable().optional(),
+  weight: z.number().nullable().optional(),
+  caseTransform: z
+    .enum(['', 'none', 'uppercase', 'lowercase', 'capitalize'])
+    .optional(),
+  align: z.enum(['', 'left', 'center', 'right', 'justify']).optional(),
+  color: z.string().optional(),
+  letterSpacing: z.number().nullable().optional(),
+  lineHeight: z.number().nullable().optional(),
+});
+
 const siteMedia = z.object({
   navLogo: z.string(),
   navEagle: z.string(),
@@ -96,6 +114,9 @@ const siteMedia = z.object({
 export const siteContentSchema = z.object({
   media: siteMedia,
   mediaEffects: z.record(z.string(), mediaEffect),
+  // Opcional pelo mesmo motivo de `typography`: não invalidar o conteúdo
+  // que já está salvo sem este campo.
+  textStyles: z.record(z.string(), textStyle).optional(),
   nav: z.object({
     home: z.string(),
     about: z.string(),
