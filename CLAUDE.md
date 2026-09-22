@@ -127,7 +127,7 @@ Destino é escolhido em **Admin > Armazenamento** (`src/lib/storageSettings.ts`,
 Regras que valem nos dois modos:
 
 - Multer **sempre** grava em disco primeiro. No modo S3 o arquivo é temporário: sobe por stream
-  (`fs.createReadStream`, sem segurar vídeo de 100 MB em memória) e é apagado depois do PUT.
+  (`fs.createReadStream`, sem segurar vídeo de 200 MB em memória) e é apagado depois do PUT.
 - Se o bucket falhar, o arquivo local é mantido e a resposta volta com a URL `/uploads/...`:
   indisponibilidade do bucket não quebra o upload do painel.
 - Objetos vão com `ACL: public-read` e `Cache-Control: 1 ano immutable` — sem o ACL o Spaces
@@ -175,7 +175,7 @@ perdeu o `palette: true`, que reduzia a foto a 256 cores. Mesma lógica do
 `SiteContent` guarda o caminho do arquivo, e trocar a extensão quebraria as referências do site.
 
 - Endpoint: `POST /api/upload` (multer disco) — devolve **caminho relativo** (`/uploads/<file>`) no modo local
-- Limite: 100 MB
+- Limite: 200 MB
 - Servidos em `/uploads/<file>` (static) com `Cache-Control: 1 ano immutable` + `Access-Control-Allow-Origin: *`
   (o `*` é necessário pro editor de recorte ler a imagem em `<canvas>` sem tainted canvas)
 - **Nunca gravar URL absoluta no SiteContent.** O host entra no render, via `eagle-front/src/lib/mediaUrl.ts`

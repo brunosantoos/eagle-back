@@ -43,12 +43,12 @@ app.use(compression());
 ensureUploadsDir();
 
 // Sempre grava em disco primeiro: no modo S3 o arquivo é temporário e sobe por
-// stream, o que evita segurar vídeo de 100 MB na memória do processo.
+// stream, o que evita segurar vídeo de 200 MB na memória do processo.
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, uploadsDir),
   filename: (_req, file, cb) => cb(null, buildObjectName(file.originalname)),
 });
-const upload = multer({ storage, limits: { fileSize: 100 * 1024 * 1024 } });
+const upload = multer({ storage, limits: { fileSize: 200 * 1024 * 1024 } });
 
 // Static file serving — nome do arquivo é único por upload, então cache longo é seguro.
 // `Access-Control-Allow-Origin: *` permite ler a imagem em <canvas> (editor de recorte
