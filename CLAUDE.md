@@ -166,6 +166,12 @@ o caso normal agora.
 em Admin > Mídias, e o único lugar que recomprime imagem de propósito. O router `mediaLibrary` expõe
 `scanUploads` (simulação) e `optimizeUploads` (grava), ambos `contentProcedure`.
 
+`optimizeUploads` aceita `{ files?: string[] }`: a análise virou uma lista com checkbox e botão
+"Comprimir" por linha, então dá para comprimir **uma imagem só** e conferir o resultado antes de
+seguir — sem `files` o comportamento antigo (acervo inteiro) continua valendo, e é o que o
+`make uploads-optimize-apply` usa. O filtro roda sobre o `readdir` de `uploads/`, não sobre um
+caminho montado com o que veio do cliente, então nome com `../` não casa com nada.
+
 Os limites daqui foram reescritos pelo mesmo motivo: com `MIN_BYTES` em 60 KB e ganho mínimo de 5%,
 a rotina pegava **todo** o acervo e reencodava tudo em q82 — foi o que virou 436 MB em 13 MB numa
 passada só, com perda visível. Agora só entra na lista o que passa de **1,5 MB** ou está fora de

@@ -89,11 +89,27 @@ function formatFor(ext: string): 'jpeg' | 'png' | 'webp' | null {
  *
  * Com `apply: false` nada é escrito — devolve o mesmo relatório, com os
  * tamanhos que o resultado teria. É o que sustenta o "analisar antes" do painel.
+ *
+ * Com `only`, só os arquivos daquela lista são olhados — é o que permite
+ * comprimir uma imagem escolhida na análise sem tocar nas outras.
  */
 export async function optimizeUploadsFolder({
   apply,
+  only,
 }: {
   apply: boolean;
+  /**
+   * Nomes de arquivo a processar. Ausente (ou vazio) = o acervo inteiro.
+   *
+   * Existe para o painel comprimir uma imagem de cada vez: a operação não tem
+   * desfazer, então quem está no Admin escolhe na lista da análise em vez de
+   * reescrever tudo numa tacada.
+   *
+   * A filtragem é feita **sobre o resultado do `readdir`**, não montando um
+   * caminho a partir do que veio de fora — nome com `../` simplesmente não
+   * casa com nenhuma entrada e é ignorado.
+   */
+  only?: string[];
 }): Promise<OptimizeUploadsReport> {
   const settings = await loadStorageSettings().catch(() => null);
   const report: OptimizeUploadsReport = {
@@ -108,8 +124,11 @@ export async function optimizeUploadsFolder({
   if (!fs.existsSync(uploadsDir)) return report;
 
   const names = await fs.promises.readdir(uploadsDir);
+  const wanted = only?.length ? new Set(only.map((n) => path.basename(n))) : null;
 
   for (const name of names) {
+    if (wanted && !wanted.has(name)) continue;
+
     const file = path.join(uploadsDir, name);
     const stat = await fs.promises.stat(file).catch(() => null);
     // Arquivo pequeno passa direto: só entra na lista o que pesa, ou o que está

@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { router, contentProcedure } from '../trpc';
 import { optimizeUploadsFolder } from '../lib/optimizeUploads';
 
@@ -14,8 +15,23 @@ export const mediaLibraryRouter = router({
     return optimizeUploadsFolder({ apply: false });
   }),
 
-  /** Comprime de fato os arquivos. */
-  optimizeUploads: contentProcedure.mutation(async () => {
-    return optimizeUploadsFolder({ apply: true });
-  }),
+  /**
+   * Comprime de fato os arquivos.
+   *
+   * `files` é a seleção feita na análise: sem ela o acervo inteiro é
+   * processado (comportamento antigo), com ela só as imagens escolhidas. Como
+   * a compressão não tem desfazer, comprimir uma de cada vez é o caminho
+   * normal no painel.
+   */
+  optimizeUploads: contentProcedure
+    .input(
+      z
+        .object({
+          files: z.array(z.string()).optional(),
+        })
+        .optional(),
+    )
+    .mutation(async ({ input }) => {
+      return optimizeUploadsFolder({ apply: true, only: input?.files });
+    }),
 });
